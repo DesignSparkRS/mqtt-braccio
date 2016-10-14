@@ -1,0 +1,36 @@
+#!/usr/bin/python
+# -*- encoding: utf-8 -*-
+
+import os
+import sys
+import time
+import serial
+import ConfigParser
+import paho.mqtt.publish as publish
+
+config = ConfigParser.ConfigParser()
+config.read("/opt/iotdemo/conf/iotdemo.conf")
+
+# Configuration
+
+## Serial connection to Arduino Braccio robot
+
+robot = serial.Serial("/dev/ttyACM0", 19200)
+
+## MQTT
+
+broker = config.get('common', 'mqtt_broker')
+
+topic = config.get('braccio', 'feedback_topic')
+
+# Main loop
+
+while True:
+   msg = robot.readline()
+
+   try:
+      publish.single(topic, msg, hostname=broker, client_id="braccio_control_feedback")
+   except (KeyboardInterrupt, SystemExit):
+      raise
+   except:
+      raise

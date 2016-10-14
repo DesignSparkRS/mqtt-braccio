@@ -1,0 +1,143 @@
+#!/usr/bin/python
+# -*- encoding: utf-8 -*-
+
+import os
+import sys
+import time
+import json
+import serial
+import ConfigParser
+from periphery import GPIO
+import paho.mqtt.client as mqtt
+
+config = ConfigParser.ConfigParser()
+config.read("/opt/iotdemo/conf/iotdemo.conf")
+
+# Initial setup
+
+## LED outputs, initial state and flash to test
+
+base_led = GPIO(7, "out")
+shoulder_led = GPIO(8, "out")
+elbow_led = GPIO(25, "out")
+rotation_led = GPIO(24, "out")
+vertical_led = GPIO(23, "out")
+gripper_led = GPIO(18, "out")
+pub_led = GPIO(14, "out")
+sub_led = GPIO(15, "out")
+
+outputs = [base_led, shoulder_led, elbow_led, rotation_led, vertical_led, gripper_led, pub_led, sub_led]
+
+for pin in outputs:
+    pin.write(False)
+
+for pin in outputs:
+    pin.write(True)
+    time.sleep(0.2)
+    pin.write(False)
+
+## Serial connection to Arduino Braccio robot
+
+robot = serial.Serial("/dev/ttyACM0", 19200)
+
+# Hardware I/O functions
+
+## Green LED:
+## flash 2s = connected to broker
+## single flash = message RX
+## constant = failed to connect 
+
+def indsys(mode):
+    if mode == 'connected':
+        for i in range(0, 20):
+            sub_led.write(True)
+            time.sleep(0.1)
+            sub_led.write(False)
+            time.sleep(0.1)
+    elif mode == 'message':
+        sub_led.write(True)
+        time.sleep(0.1)
+        sub_led.write(False)
+    elif mode == 'fail':
+        sub_led.write(True)
+    else:
+        return
+
+## Braccio arm indicators 
+
+def indarm(joint, state):
+    if (joint == 'a' or joint == 'A'):
+        base_led.write(state)
+    elif (joint == 'b' or joint == 'B'):
+        shoulder_led.write(state)
+    elif (joint == 'c' or joint == 'C'):
+        elbow_led.write(state)
+    elif (joint == 'd' or joint == 'D'):
+        vertical_led.write(state)
+    elif (joint == 'e' or joint == 'E'):
+        rotation_led.write(state)
+    elif (joint == 'f' or joint == 'F'):
+        gripper_led.write(state)
+    else:
+        return
+
+## Command to move the robot
+
+def move(joint, value):
+    cmd = 'S{0}{1}X'.format(joint, value) 
+    indarm(joint, True) 
+    try:
+        robot.write(cmd)
+    except:
+        print "Failed to command Braccio arm"
+    time.sleep(1)
+    indarm(joint, False)
+
+# MQTT
+
+## Configuration
+
+broker = config.get('common', 'mqtt_broker')
+
+topic = config.get('braccio', 'cmd_topic')
+
+## The callback for when the client receives a CONNACK response from the server.
+
+def on_connect(client, userdata, flags, rc):
+        print("Connected with result code "+str(rc))
+        print broker + topic
+        client.subscribe(topic, 0)
+        indsys('connected')
+
+## The callback for when a PUBLISH message is received from the server
+
+def on_message(client, userdata, msg):
+        indsys('message')
+        print msg.payload
+        try:
+            pos = json.loads((msg.payload))
+            move(pos['joint'], pos['value'])
+        except:
+            print "Failed to parse MQTT command"
+
+## Setup client
+
+client = mqtt.Client(client_id="braccio_control_cmd", clean_session=True)
+client.on_connect = on_connect
+client.on_message = on_message
+
+# Main loop
+
+try:
+    client.connect(broker, 1883, 60)
+except (KeyboardInterrupt, SystemExit):
+    raise
+except:
+    print "Failed to connect to broker"
+    indsys("fail")
+    time.sleep(1)
+
+## Run loop and wait for messages
+
+client.loop_forever()
+

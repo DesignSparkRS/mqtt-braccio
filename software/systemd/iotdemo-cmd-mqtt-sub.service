@@ -1,0 +1,11 @@
+[Unit]
+Description=Braccio arm MQTT control
+After=network.target
+
+[Service]
+Type=simple
+RemainAfterExit=no
+ExecStart=/opt/iotdemo/bin/arm-cmd-mqtt-sub
+
+[Install]
+WantedBy=multi-user.target

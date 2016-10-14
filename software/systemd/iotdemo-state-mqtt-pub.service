@@ -1,0 +1,11 @@
+[Unit]
+Description=Braccio arm state MQTT publish
+After=network.target
+
+[Service]
+Type=simple
+RemainAfterExit=no
+ExecStart=/opt/iotdemo/bin/arm-state-mqtt-pub
+
+[Install]
+WantedBy=multi-user.target

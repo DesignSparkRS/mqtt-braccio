@@ -1,0 +1,64 @@
+#!/usr/bin/python
+# -*- encoding: utf-8 -*-
+
+import os
+import sys
+import time
+import ConfigParser
+from periphery import GPIO
+import paho.mqtt.publish as publish
+
+config = ConfigParser.ConfigParser()
+config.read("/opt/iotdemo/conf/iotdemo.conf")
+
+# Configuration
+
+## MQTT
+
+broker = config.get('common', 'mqtt_broker')
+
+topic = config.get('braccio', 'state_topic')
+
+# Initial setup
+
+## Inputs and outputs, and initial state
+
+state_pin = GPIO(21, "in")
+pub_led = GPIO(14, "out")
+
+pub_led.write(False)
+
+# Hardware I/O functions
+
+## Red LED:
+## single flash = message TX
+## constant = failed to publish
+
+def indsys(mode):
+    if mode == 'message':
+        pub_led.write(True)
+        time.sleep(0.1)
+        pub_led.write(False)
+    elif mode == 'fail':
+        pub_led.write(True)
+    else:
+        return
+
+# Main loop
+
+while True:
+   if state_pin.read() == True:
+       msg = "disarmed"
+   else:
+       msg = "armed"
+
+   try:
+      publish.single(topic, msg, hostname=broker, client_id="braccio_control_state")
+      indsys('message')
+   except (KeyboardInterrupt, SystemExit):
+      raise
+   except:
+      indsys('fail')
+
+   time.sleep(1)
+
